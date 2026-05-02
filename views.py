@@ -8,12 +8,14 @@ from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from tkcalendar import DateEntry
 from datetime import datetime, timedelta
 
-# --- CLASE BASE DE LA QUE HEREDAN TODAS LAS PANTALLAS ---
+
+# --- CLASE BASE ---
 class ViewBase(ctk.CTkFrame):
     def __init__(self, master, app, **kwargs):
         super().__init__(master, fg_color="transparent")
-        self.app = app 
+        self.app = app
         self.pack(fill="both", expand=True)
+
 
 # ==========================================
 # 1. PANTALLA DE LOGIN
@@ -24,42 +26,76 @@ class LoginView(ViewBase):
         frame = ctk.CTkFrame(self, width=400, height=500, corner_radius=15, fg_color=theme.COLORS["bg_card"])
         frame.place(relx=0.5, rely=0.5, anchor="center")
 
-        ctk.CTkLabel(frame, text="KURO\nSYSTEMS", font=theme.FONTS["h1"], text_color=theme.COLORS["text_main"]).pack(pady=(40, 20))
-        
+        ctk.CTkLabel(frame, text="KURO\nSYSTEMS", font=theme.FONTS["h1"], text_color=theme.COLORS["text_main"]).pack(
+            pady=(40, 20))
+
         self.ent_user = ctk.CTkEntry(frame, placeholder_text="Usuario", width=250, height=40)
-        self.ent_user.pack(pady=10); self.ent_user.bind("<Return>", lambda e: self.intentar_login())
-        
+        self.ent_user.pack(pady=10);
+        self.ent_user.bind("<Return>", lambda e: self.intentar_login())
+
         self.ent_pass = ctk.CTkEntry(frame, placeholder_text="Contraseña", show="*", width=250, height=40)
-        self.ent_pass.pack(pady=10); self.ent_pass.bind("<Return>", lambda e: self.intentar_login())
-        
+        self.ent_pass.pack(pady=10);
+        self.ent_pass.bind("<Return>", lambda e: self.intentar_login())
+
         self.lbl_error = ctk.CTkLabel(frame, text="", text_color=theme.COLORS["danger"])
         self.lbl_error.pack(pady=5)
-        
-        ctk.CTkButton(frame, text="Ingresar", height=40, width=250, font=theme.FONTS["body_bold"], fg_color=theme.COLORS["primary"], hover_color=theme.COLORS["primary_hover"], command=self.intentar_login).pack(pady=20)
+
+        ctk.CTkButton(frame, text="Ingresar", height=40, width=250, font=theme.FONTS["body_bold"],
+                      fg_color=theme.COLORS["primary"], hover_color=theme.COLORS["primary_hover"],
+                      command=self.intentar_login).pack(pady=20)
 
     def intentar_login(self):
-        if not self.app.procesar_login(self.ent_user.get(), self.ent_pass.get()): 
+        if not self.app.procesar_login(self.ent_user.get(), self.ent_pass.get()):
             self.lbl_error.configure(text="Credenciales incorrectas o campos vacíos.")
 
 
 # ==========================================
-# 2. PANTALLA DE FACTURACIÓN (POS)
+# 2. SISTEMA MULTICAJA (CONTENEDOR DE PESTAÑAS)
 # ==========================================
 class POSView(ViewBase):
     def __init__(self, master, app):
         super().__init__(master, app)
+
+        # Gestor de pestañas
+        self.tabs = ctk.CTkTabview(self, command=self.al_cambiar_pestana)
+        self.tabs.pack(fill="both", expand=True, padx=5, pady=0)
+
+        self.terminales = {}
+        for nombre in ["Caja 1", "Caja 2 (En Espera)", "Caja 3 (En Espera)"]:
+            tab = self.tabs.add(nombre)
+            # Creamos una terminal 100% independiente para cada pestaña
+            terminal = POSInstance(tab, app)
+            terminal.pack(fill="both", expand=True)
+            self.terminales[nombre] = terminal
+
+    def al_cambiar_pestana(self):
+        # Auto-enfoca el buscador de la pestaña activa para facturar rápidamente
+        tab_activa = self.tabs.get()
+        if tab_activa in self.terminales:
+            self.terminales[tab_activa].ent_codigo.focus()
+
+    def enfocar_caja(self):
+        self.al_cambiar_pestana()
+
+
+# ==========================================
+# 2.1. INSTANCIA INDIVIDUAL DE LA CAJA (Antes POSView)
+# ==========================================
+class POSInstance(ctk.CTkFrame):
+    def __init__(self, master, app):
+        super().__init__(master, fg_color="transparent")
+        self.app = app
         self.carrito = []
         self.total_venta = 0.0
         self.cambio_actual = 0.0
 
         # ==========================================
-        # 1. CABECERA (Ahora aloja los botones administrativos)
+        # 1. CABECERA
         # ==========================================
         header = ctk.CTkFrame(self, fg_color="transparent")
         header.pack(fill="x", padx=20, pady=10)
-        ctk.CTkLabel(header, text="Punto de Venta", font=theme.FONTS["h1"]).pack(side="left")
+        ctk.CTkLabel(header, text="Terminal de Venta", font=theme.FONTS["h1"]).pack(side="left")
 
-        # Movemos Historial y Cierre aquí arriba, pequeños y discretos
         caja_admin = ctk.CTkFrame(header, fg_color="transparent")
         caja_admin.pack(side="right")
         ctk.CTkLabel(caja_admin, text=f"Cajero: {self.app.rol_actual.upper()}", text_color=theme.COLORS["warning"],
@@ -71,12 +107,11 @@ class POSView(ViewBase):
                                                                                                     padx=5)
 
         # ==========================================
-        # 2. BARRA DE BÚSQUEDA Y CARRITO (Solo lo esencial)
+        # 2. BARRA DE BÚSQUEDA Y CARRITO
         # ==========================================
         search = ctk.CTkFrame(self, corner_radius=10, fg_color=theme.COLORS["bg_card"])
         search.pack(fill="x", padx=20, pady=5)
 
-        # Izquierda: Ingreso de productos
         self.ent_codigo = ctk.CTkEntry(search, width=250, height=40, font=theme.FONTS["h3"],
                                        placeholder_text="Escanear o digitar código...")
         self.ent_codigo.pack(side="left", padx=15, pady=15)
@@ -88,8 +123,8 @@ class POSView(ViewBase):
         ctk.CTkButton(search, text="➕ Libre", width=70, height=40, fg_color="#E67E22", hover_color="#D35400",
                       command=self.abrir_venta_libre).pack(side="left", padx=5)
 
-        # Derecha: Manipulación del carrito
-        ctk.CTkButton(search, text="🗑️ Eliminar", fg_color=theme.COLORS["danger"], hover_color=theme.COLORS["danger_hover"],
+        ctk.CTkButton(search, text="🗑️ Eliminar", fg_color=theme.COLORS["danger"],
+                      hover_color=theme.COLORS["danger_hover"],
                       font=theme.FONTS["h3"], width=40, height=40, command=self.quitar_item).pack(side="right",
                                                                                                   padx=(5, 15))
         ctk.CTkButton(search, text="✏️ Cantidad", fg_color=theme.COLORS["warning"],
@@ -101,7 +136,7 @@ class POSView(ViewBase):
                       width=60, height=40, command=self.aplicar_precio_fraccion).pack(side="right", padx=5)
 
         # ==========================================
-        # 3. TABLA Y PIE DE PÁGINA (Sin cambios)
+        # 3. TABLA Y PIE DE PÁGINA
         # ==========================================
         tb_frame = ctk.CTkFrame(self, fg_color="transparent")
         tb_frame.pack(fill="both", expand=True, padx=20, pady=10)
@@ -154,7 +189,7 @@ class POSView(ViewBase):
         self.chk_imprimir.pack(side="right", padx=15)
         self.chk_imprimir.select()
 
-    # --- NUEVA FUNCIÓN: VENTA LIBRE ---
+    # --- LÓGICA DE LA CAJA (Idéntica a la anterior) ---
     def abrir_venta_libre(self):
         popup = ctk.CTkToplevel(self)
         popup.title("Venta Libre / Artículo Temporal")
@@ -165,7 +200,7 @@ class POSView(ViewBase):
         ctk.CTkLabel(popup, text="Descripción del Artículo/Servicio:", font=theme.FONTS["body_bold"]).pack(pady=(20, 5))
         ent_nom = ctk.CTkEntry(popup, width=300, height=35)
         ent_nom.pack(pady=5)
-        ent_nom.insert(0, "Artículo Varios")  # Nombre por defecto
+        ent_nom.insert(0, "Artículo Varios")
 
         ctk.CTkLabel(popup, text="Precio Total ($):", font=theme.FONTS["body_bold"]).pack(pady=(15, 5))
         ent_pre = ctk.CTkEntry(popup, width=300, height=35)
@@ -178,10 +213,7 @@ class POSView(ViewBase):
             try:
                 precio = float(val)
                 if precio < 0: return messagebox.showerror("Error", "El precio no puede ser negativo.")
-
                 nom = ent_nom.get().strip().upper() or "ARTÍCULO VARIOS"
-
-                # Inyectamos el producto temporal al carrito
                 self.carrito.append({
                     'codigo': 'TEMP', 'nombre': nom, 'costo': 0, 'categoria': 'Venta Libre',
                     'precio_normal': precio, 'precio_mayoreo': 0, 'cantidad_mayoreo': 0,
@@ -197,20 +229,16 @@ class POSView(ViewBase):
         ctk.CTkButton(popup, text="Añadir a Factura", fg_color=theme.COLORS["success"], font=theme.FONTS["body_bold"],
                       height=40, command=agregar).pack(pady=25)
 
-    # ----------------------------------
-
     def calcular_precios_y_subtotales(self):
         for item in self.carrito:
             if item.get('modo_fraccion', False):
                 item['precio_usado'] = item['precio_fraccion']
                 item['subtotal'] = item['cantidad'] * item['precio_usado']
                 continue
-
             if item.get('modo_mayoreo_manual', False):
                 item['precio_usado'] = item['precio_mayoreo']
                 item['subtotal'] = item['cantidad'] * item['precio_usado']
                 continue
-
             item['precio_usado'] = item['precio_normal']
             item['subtotal'] = item['cantidad'] * item['precio_usado']
 
@@ -287,7 +315,6 @@ class POSView(ViewBase):
                                                                                                 "Este producto no admite decimales.")
                 if not item['es_fraccion']: nc = int(nc)
 
-                # Excepción para el artículo TEMP (No tiene límite de stock)
                 if item['codigo'] != 'TEMP':
                     disp = database.buscar_producto_exacto(item['codigo'])[3]
                     if nc > disp: return messagebox.showerror("Error", f"Máximo disponible: {disp:g}")
@@ -298,8 +325,10 @@ class POSView(ViewBase):
                 messagebox.showerror("Error", "Ingrese un número válido.")
 
     def quitar_item(self):
-        if self.tabla.selection(): del self.carrito[
-            self.tabla.index(self.tabla.selection()[0])]; self.actualizar_ui(); self.ent_codigo.focus()
+        if self.tabla.selection():
+            del self.carrito[self.tabla.index(self.tabla.selection()[0])]
+            self.actualizar_ui()
+            self.ent_codigo.focus()
 
     def actualizar_ui(self):
         self.calcular_precios_y_subtotales()
@@ -360,33 +389,26 @@ class POSView(ViewBase):
         ef_texto = self.ent_efectivo.get().replace(".", "").replace(",", "").replace("$", "").strip()
         ef = float(ef_texto or 0.0)
 
-        if ef < self.total_venta:
-            return messagebox.showerror("Error", "Pago insuficiente.")
+        if ef < self.total_venta: return messagebox.showerror("Error", "Pago insuficiente.")
 
         if messagebox.askyesno("Confirmar", f"¿Procesar venta por $ {int(self.total_venta):,}?"):
             exito, res = database.registrar_venta(self.carrito, self.total_venta, self.app.rol_actual, ef,
                                                   self.cambio_actual, mp)
 
             if exito:
-                # 1. Impresión de recibo opcional
                 if self.chk_imprimir.get() == 1:
                     hardware.generar_ticket_impresion(res, self.carrito, self.total_venta, ef, self.cambio_actual, mp,
                                                       self.app.rol_actual)
+                if mp == "Efectivo": hardware.abrir_cajon()
 
-                # 2. SEGURIDAD: Abrir cajón SOLO si el pago es en EFECTIVO
-                if mp == "Efectivo":
-                    hardware.abrir_cajon()
-
-                # Limpiar terminal
-                self.carrito.clear()
-                self.ent_efectivo.configure(state="normal")
+                self.carrito.clear();
+                self.ent_efectivo.configure(state="normal");
                 self.ent_efectivo.delete(0, 'end')
-                self.actualizar_ui()
+                self.actualizar_ui();
                 self.app.actualizar_campana_alertas()
             else:
                 messagebox.showerror("Error", res)
 
-    # --- HISTORIAL, CIERRE Y BÚSQUEDA ---
     def abrir_cierre_caja(self):
         popup = ctk.CTkToplevel(self)
         popup.title("Arqueo y Cierre de Caja Diario")
@@ -408,20 +430,17 @@ class POSView(ViewBase):
         def generar_informe(e=None):
             for w in scroll.winfo_children(): w.destroy()
             fecha = cal.get()
-
             try:
                 datos = database.generar_cierre_diario(fecha)
             except Exception as ex:
-                ctk.CTkLabel(scroll, text=f"Error al leer base de datos: {ex}",
-                             text_color=theme.COLORS["danger"]).pack()
-                return
+                return ctk.CTkLabel(scroll, text=f"Error: {ex}", text_color=theme.COLORS["danger"]).pack()
 
             def titulo(texto):
                 ctk.CTkLabel(scroll, text=texto, font=theme.FONTS["h3"], text_color=theme.COLORS["primary"]).pack(
                     anchor="w", pady=(15, 5))
 
             def fila(clave, valor, color=theme.COLORS["text_main"], bold=False):
-                f = ctk.CTkFrame(scroll, fg_color="transparent")
+                f = ctk.CTkFrame(scroll, fg_color="transparent");
                 f.pack(fill="x", pady=2)
                 ctk.CTkLabel(f, text=clave, font=theme.FONTS["body_bold"] if bold else theme.FONTS["body"],
                              text_color=color).pack(side="left")
@@ -465,12 +484,11 @@ class POSView(ViewBase):
             titulo("ANÁLISIS DE RENTABILIDAD")
             fila("Reserva para Gastos Fijos (Prorrateo):",
                  f"- $ {int(datos.get('fijo_diario', 0)):,}".replace(",", "."), theme.COLORS["warning"])
-
             ganancia = datos.get('ganancia_neta', 0)
             color_ganancia = theme.COLORS["success"] if ganancia >= 0 else theme.COLORS["danger"]
             fila("GANANCIA NETA REAL DEL DÍA:", f"$ {int(ganancia):,}".replace(",", "."), color_ganancia, bold=True)
 
-        cal.bind("<<DateEntrySelected>>", generar_informe)
+        cal.bind("<<DateEntrySelected>>", generar_informe);
         generar_informe()
 
     def abrir_historial(self):
@@ -490,9 +508,9 @@ class POSView(ViewBase):
         tb_v = ttk.Treeview(popup, columns=("id", "hora", "cajero", "total", "pago"), show="headings", height=8)
         for c, t, w in [("id", "Factura #", 80), ("hora", "Hora", 100), ("cajero", "Cajero", 150),
                         ("total", "Total Venta", 120), ("pago", "Método Pago", 120)]:
-            tb_v.heading(c, text=t)
+            tb_v.heading(c, text=t);
             tb_v.column(c, width=w, anchor="center")
-        tb_v.tag_configure('impar', background=theme.COLORS["table_odd"])
+        tb_v.tag_configure('impar', background=theme.COLORS["table_odd"]);
         tb_v.tag_configure('par', background=theme.COLORS["table_even"])
         tb_v.pack(pady=10, padx=20, fill="x")
 
@@ -500,9 +518,9 @@ class POSView(ViewBase):
                      text_color=theme.COLORS["text_muted"]).pack(anchor="w", padx=20)
         tb_d = ttk.Treeview(popup, columns=("art", "cant", "subt"), show="headings", height=6)
         for c, t, w in [("art", "Artículo", 300), ("cant", "Cantidad", 80), ("subt", "Subtotal", 120)]:
-            tb_d.heading(c, text=t)
+            tb_d.heading(c, text=t);
             tb_d.column(c, width=w, anchor="center" if c != "art" else "w")
-        tb_d.tag_configure('impar', background=theme.COLORS["table_odd"])
+        tb_d.tag_configure('impar', background=theme.COLORS["table_odd"]);
         tb_d.tag_configure('par', background=theme.COLORS["table_even"])
         tb_d.pack(pady=5, padx=20, fill="both", expand=True)
 
@@ -515,7 +533,7 @@ class POSView(ViewBase):
                 tb_v.insert("", "end", values=(v[0], hora, v[2].upper(), f"$ {int(v[3]):,}", v[6]),
                             tags=('par',) if i % 2 == 0 else ('impar',))
 
-        cal.bind("<<DateEntrySelected>>", cargar_ventas)
+        cal.bind("<<DateEntrySelected>>", cargar_ventas);
         cargar_ventas()
 
         def ver_detalles(e=None):
@@ -530,7 +548,7 @@ class POSView(ViewBase):
 
         tb_v.bind("<<TreeviewSelect>>", ver_detalles)
 
-        bot_f = ctk.CTkFrame(popup, fg_color="transparent")
+        bot_f = ctk.CTkFrame(popup, fg_color="transparent");
         bot_f.pack(pady=15, padx=20, fill="x")
 
         def reimprimir():
@@ -556,7 +574,7 @@ class POSView(ViewBase):
                 exito, msg = database.anular_venta(vid)
                 if exito:
                     messagebox.showinfo("Éxito", msg)
-                    cargar_ventas()
+                    cargar_ventas();
                     self.app.actualizar_campana_alertas()
                 else:
                     messagebox.showerror("Error de Base de Datos", msg)
@@ -581,9 +599,9 @@ class POSView(ViewBase):
         tb = ttk.Treeview(popup, columns=("codigo", "nombre", "precio", "stock"), show="headings", height=10)
         for c, t, w in [("codigo", "Código", 100), ("nombre", "Nombre", 300), ("precio", "Precio", 100),
                         ("stock", "Stock", 80)]:
-            tb.heading(c, text=t)
+            tb.heading(c, text=t);
             tb.column(c, width=w)
-        tb.tag_configure('impar', background=theme.COLORS["table_odd"])
+        tb.tag_configure('impar', background=theme.COLORS["table_odd"]);
         tb.tag_configure('par', background=theme.COLORS["table_even"])
         tb.pack(pady=10, padx=20, fill="both", expand=True)
 
@@ -593,20 +611,24 @@ class POSView(ViewBase):
                 tb.insert("", "end", values=(p[0], p[1], f"$ {int(p[4]):,}", f"{p[5]:g}"),
                           tags=('par',) if i % 2 == 0 else ('impar',))
 
-        ent_n.bind("<KeyRelease>", refrescar)
+        ent_n.bind("<KeyRelease>", refrescar);
         refrescar()
 
         def seleccionar(e=None):
             sel = tb.selection()
             if sel:
-                self.ent_codigo.delete(0, 'end')
+                self.ent_codigo.delete(0, 'end');
                 self.ent_codigo.insert(0, str(tb.item(sel[0])['values'][0]))
-                self.add_carrito()
+                self.add_carrito();
                 popup.destroy()
 
         tb.bind("<Double-1>", seleccionar)
         ctk.CTkButton(popup, text="Añadir a Factura", height=40, fg_color=theme.COLORS["success"],
                       font=theme.FONTS["body_bold"], command=seleccionar).pack(pady=15)
+
+
+# (Resto de Vistas: InventarioView, FinanzasView, etc. permanecen intactas en tu código original, pégalas aquí debajo)
+# ...
 # ==========================================
 # 3. INVENTARIO
 # ==========================================
