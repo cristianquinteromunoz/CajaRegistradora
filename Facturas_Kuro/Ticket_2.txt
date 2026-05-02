@@ -1,0 +1,19 @@
+================================
+          KURO SYSTEMS          
+================================
+Fecha: 22/04/2026 17:17
+Factura No: 2
+Cajero: ADMIN
+--------------------------------
+2x TEQUILA JOSE CUERV
+   $ 105000         $ 210.000
+3x VODKA ABSOLUT 700M
+   $ 100000         $ 300.000
+--------------------------------
+TOTAL:    $ 510.000
+MEDIO DE PAGO: EFECTIVO
+RECIBIDO: $ 550.000
+CAMBIO:   $ 40.000
+================================
+     Gracias por su compra!     
+

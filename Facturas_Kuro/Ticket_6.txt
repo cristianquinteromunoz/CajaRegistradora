@@ -1,0 +1,17 @@
+================================
+          KURO SYSTEMS          
+================================
+Fecha: 24/04/2026 11:12
+Factura No: 6
+Cajero: ADMIN
+--------------------------------
+1x TEQUILA JOSE CUERV
+   $ 105000         $ 105.000
+--------------------------------
+TOTAL:    $ 105.000
+MEDIO DE PAGO: {metodo_pago.upper()}
+RECIBIDO: $ 110.000
+CAMBIO:   $ {int(cambio):.}
+================================
+     Gracias por su compra!     
+
