@@ -30,11 +30,11 @@ class LoginView(ViewBase):
             pady=(40, 20))
 
         self.ent_user = ctk.CTkEntry(frame, placeholder_text="Usuario", width=250, height=40)
-        self.ent_user.pack(pady=10);
+        self.ent_user.pack(pady=10)
         self.ent_user.bind("<Return>", lambda e: self.intentar_login())
 
         self.ent_pass = ctk.CTkEntry(frame, placeholder_text="Contraseña", show="*", width=250, height=40)
-        self.ent_pass.pack(pady=10);
+        self.ent_pass.pack(pady=10)
         self.ent_pass.bind("<Return>", lambda e: self.intentar_login())
 
         self.lbl_error = ctk.CTkLabel(frame, text="", text_color=theme.COLORS["danger"])
@@ -283,18 +283,34 @@ class POSInstance(ctk.CTkFrame):
         enc = False
         for item in self.carrito:
             if item['codigo'] == prod[0]:
-                if item['cantidad'] + 1 > prod[3]: return messagebox.showerror("Stock",
-                                                                               f"Solo hay {prod[3]:g} disponibles.")
+
+                # --- CORRECCIÓN: Validar stock considerando si es fracción ---
+                divisor = item.get('divisor_fraccion', 1.0)
+                if divisor <= 0: divisor = 1.0
+
+                stock_requerido = (item['cantidad'] + 1) / divisor if item.get('modo_fraccion', False) else (
+                            item['cantidad'] + 1)
+
+                if stock_requerido > prod[3]:
+                    if item.get('modo_fraccion', False):
+                        return messagebox.showerror("Stock", f"Solo hay {prod[3]:g} enteros disponibles.")
+                    else:
+                        return messagebox.showerror("Stock", f"Solo hay {prod[3]:g} disponibles.")
+
                 item['cantidad'] += 1
                 enc = True
                 break
+
         if not enc:
             if prod[3] < 1: return messagebox.showerror("Agotado", "Producto agotado.")
+
+            divisor_f = prod[11] if len(prod) > 11 and prod[11] else 1.0
+
             self.carrito.append({
                 'codigo': prod[0], 'nombre': prod[1], 'costo': prod[4], 'categoria': prod[5],
                 'precio_normal': prod[2], 'precio_mayoreo': prod[7], 'cantidad_mayoreo': prod[8],
                 'es_fraccion': prod[6] == 1, 'precio_fraccion': prod[9], 'modo_fraccion': False,
-                'modo_mayoreo_manual': False,
+                'modo_mayoreo_manual': False, 'divisor_fraccion': divisor_f,
                 'cantidad': 1.0 if prod[6] == 1 else 1, 'precio_usado': prod[2], 'subtotal': prod[2]
             })
         self.actualizar_ui()
@@ -306,6 +322,9 @@ class POSInstance(ctk.CTkFrame):
         item = self.carrito[idx]
 
         msg_extra = " (Admite decimales, ej. 1.5)" if item['es_fraccion'] else " (Solo números enteros)"
+        if item.get('modo_fraccion', False):
+            msg_extra = " (Cantidad de FRACCIONES a vender)"
+
         resp = ctk.CTkInputDialog(text=f"Unidades de '{item['nombre']}'? {msg_extra}", title="Cantidad").get_input()
         if resp:
             try:
@@ -317,7 +336,20 @@ class POSInstance(ctk.CTkFrame):
 
                 if item['codigo'] != 'TEMP':
                     disp = database.buscar_producto_exacto(item['codigo'])[3]
-                    if nc > disp: return messagebox.showerror("Error", f"Máximo disponible: {disp:g}")
+
+                    # --- CORRECCIÓN: Validar stock considerando si está en modo fracción ---
+                    divisor = item.get('divisor_fraccion', 1.0)
+                    if divisor <= 0: divisor = 1.0
+
+                    stock_requerido = (nc / divisor) if item.get('modo_fraccion', False) else nc
+
+                    if stock_requerido > disp:
+                        if item.get('modo_fraccion', False):
+                            max_fracciones = int(disp * divisor)
+                            return messagebox.showerror("Error",
+                                                        f"Stock insuficiente.\nHay {disp:g} enteros disponibles (Alcanza para {max_fracciones} fracciones).")
+                        else:
+                            return messagebox.showerror("Error", f"Máximo disponible: {disp:g}")
 
                 self.carrito[idx]['cantidad'] = nc
                 self.actualizar_ui()
@@ -401,10 +433,10 @@ class POSInstance(ctk.CTkFrame):
                                                       self.app.rol_actual)
                 if mp == "Efectivo": hardware.abrir_cajon()
 
-                self.carrito.clear();
-                self.ent_efectivo.configure(state="normal");
+                self.carrito.clear()
+                self.ent_efectivo.configure(state="normal")
                 self.ent_efectivo.delete(0, 'end')
-                self.actualizar_ui();
+                self.actualizar_ui()
                 self.app.actualizar_campana_alertas()
             else:
                 messagebox.showerror("Error", res)
@@ -440,7 +472,7 @@ class POSInstance(ctk.CTkFrame):
                     anchor="w", pady=(15, 5))
 
             def fila(clave, valor, color=theme.COLORS["text_main"], bold=False):
-                f = ctk.CTkFrame(scroll, fg_color="transparent");
+                f = ctk.CTkFrame(scroll, fg_color="transparent")
                 f.pack(fill="x", pady=2)
                 ctk.CTkLabel(f, text=clave, font=theme.FONTS["body_bold"] if bold else theme.FONTS["body"],
                              text_color=color).pack(side="left")
@@ -488,7 +520,7 @@ class POSInstance(ctk.CTkFrame):
             color_ganancia = theme.COLORS["success"] if ganancia >= 0 else theme.COLORS["danger"]
             fila("GANANCIA NETA REAL DEL DÍA:", f"$ {int(ganancia):,}".replace(",", "."), color_ganancia, bold=True)
 
-        cal.bind("<<DateEntrySelected>>", generar_informe);
+        cal.bind("<<DateEntrySelected>>", generar_informe)
         generar_informe()
 
     def abrir_historial(self):
@@ -508,9 +540,9 @@ class POSInstance(ctk.CTkFrame):
         tb_v = ttk.Treeview(popup, columns=("id", "hora", "cajero", "total", "pago"), show="headings", height=8)
         for c, t, w in [("id", "Factura #", 80), ("hora", "Hora", 100), ("cajero", "Cajero", 150),
                         ("total", "Total Venta", 120), ("pago", "Método Pago", 120)]:
-            tb_v.heading(c, text=t);
+            tb_v.heading(c, text=t)
             tb_v.column(c, width=w, anchor="center")
-        tb_v.tag_configure('impar', background=theme.COLORS["table_odd"]);
+        tb_v.tag_configure('impar', background=theme.COLORS["table_odd"])
         tb_v.tag_configure('par', background=theme.COLORS["table_even"])
         tb_v.pack(pady=10, padx=20, fill="x")
 
@@ -518,9 +550,9 @@ class POSInstance(ctk.CTkFrame):
                      text_color=theme.COLORS["text_muted"]).pack(anchor="w", padx=20)
         tb_d = ttk.Treeview(popup, columns=("art", "cant", "subt"), show="headings", height=6)
         for c, t, w in [("art", "Artículo", 300), ("cant", "Cantidad", 80), ("subt", "Subtotal", 120)]:
-            tb_d.heading(c, text=t);
+            tb_d.heading(c, text=t)
             tb_d.column(c, width=w, anchor="center" if c != "art" else "w")
-        tb_d.tag_configure('impar', background=theme.COLORS["table_odd"]);
+        tb_d.tag_configure('impar', background=theme.COLORS["table_odd"])
         tb_d.tag_configure('par', background=theme.COLORS["table_even"])
         tb_d.pack(pady=5, padx=20, fill="both", expand=True)
 
@@ -533,7 +565,7 @@ class POSInstance(ctk.CTkFrame):
                 tb_v.insert("", "end", values=(v[0], hora, v[2].upper(), f"$ {int(v[3]):,}", v[6]),
                             tags=('par',) if i % 2 == 0 else ('impar',))
 
-        cal.bind("<<DateEntrySelected>>", cargar_ventas);
+        cal.bind("<<DateEntrySelected>>", cargar_ventas)
         cargar_ventas()
 
         def ver_detalles(e=None):
@@ -548,7 +580,7 @@ class POSInstance(ctk.CTkFrame):
 
         tb_v.bind("<<TreeviewSelect>>", ver_detalles)
 
-        bot_f = ctk.CTkFrame(popup, fg_color="transparent");
+        bot_f = ctk.CTkFrame(popup, fg_color="transparent")
         bot_f.pack(pady=15, padx=20, fill="x")
 
         def reimprimir():
@@ -574,7 +606,7 @@ class POSInstance(ctk.CTkFrame):
                 exito, msg = database.anular_venta(vid)
                 if exito:
                     messagebox.showinfo("Éxito", msg)
-                    cargar_ventas();
+                    cargar_ventas()
                     self.app.actualizar_campana_alertas()
                 else:
                     messagebox.showerror("Error de Base de Datos", msg)
@@ -599,9 +631,9 @@ class POSInstance(ctk.CTkFrame):
         tb = ttk.Treeview(popup, columns=("codigo", "nombre", "precio", "stock"), show="headings", height=10)
         for c, t, w in [("codigo", "Código", 100), ("nombre", "Nombre", 300), ("precio", "Precio", 100),
                         ("stock", "Stock", 80)]:
-            tb.heading(c, text=t);
+            tb.heading(c, text=t)
             tb.column(c, width=w)
-        tb.tag_configure('impar', background=theme.COLORS["table_odd"]);
+        tb.tag_configure('impar', background=theme.COLORS["table_odd"])
         tb.tag_configure('par', background=theme.COLORS["table_even"])
         tb.pack(pady=10, padx=20, fill="both", expand=True)
 
@@ -611,15 +643,15 @@ class POSInstance(ctk.CTkFrame):
                 tb.insert("", "end", values=(p[0], p[1], f"$ {int(p[4]):,}", f"{p[5]:g}"),
                           tags=('par',) if i % 2 == 0 else ('impar',))
 
-        ent_n.bind("<KeyRelease>", refrescar);
+        ent_n.bind("<KeyRelease>", refrescar)
         refrescar()
 
         def seleccionar(e=None):
             sel = tb.selection()
             if sel:
-                self.ent_codigo.delete(0, 'end');
+                self.ent_codigo.delete(0, 'end')
                 self.ent_codigo.insert(0, str(tb.item(sel[0])['values'][0]))
-                self.add_carrito();
+                self.add_carrito()
                 popup.destroy()
 
         tb.bind("<Double-1>", seleccionar)
@@ -696,18 +728,21 @@ class InventarioView(ViewBase):
 # ==========================================
 # 4. FORMULARIO DE PRODUCTO (Versión Final Corregida)
 # ==========================================
+# ==========================================
+# 4. FORMULARIO DE PRODUCTO (Versión Final Corregida)
+# ==========================================
 class FormularioProductoView(ViewBase):
     def __init__(self, master, app, editar_datos=None):
         super().__init__(master, app)
         ctk.CTkLabel(self, text="Ficha Técnica del Producto", font=theme.FONTS["h1"]).pack(pady=(15, 10))
-        
-        # ScrollableFrame para que quepan todos los campos en cualquier monitor
+
         scroll = ctk.CTkScrollableFrame(self, fg_color=theme.COLORS["bg_card"])
         scroll.pack(pady=10, padx=30, fill="both", expand=True)
 
-        def seccion(texto): 
-            ctk.CTkLabel(scroll, text=texto, font=theme.FONTS["h3"], text_color=theme.COLORS["primary"]).pack(anchor="w", padx=20, pady=(20,5))
-            
+        def seccion(texto):
+            ctk.CTkLabel(scroll, text=texto, font=theme.FONTS["h3"], text_color=theme.COLORS["primary"]).pack(
+                anchor="w", padx=20, pady=(20, 5))
+
         def crear_campo(padre, texto, placeholder, ancho):
             f = ctk.CTkFrame(padre, fg_color="transparent")
             f.pack(side="left", padx=10, pady=5)
@@ -718,96 +753,111 @@ class FormularioProductoView(ViewBase):
 
         # --- 1. INFO BÁSICA ---
         seccion("1. Información Básica")
-        f1 = ctk.CTkFrame(scroll, fg_color="transparent"); f1.pack(fill="x", padx=10)
+        f1 = ctk.CTkFrame(scroll, fg_color="transparent")
+        f1.pack(fill="x", padx=10)
         self.e_cod = crear_campo(f1, "Código de Barras *", "Ej: 77012345", 180)
         self.e_nom = crear_campo(f1, "Nombre del Producto *", "Ej: Aceite 4T", 250)
-        
-        f_cat = ctk.CTkFrame(f1, fg_color="transparent"); f_cat.pack(side="left", padx=10, pady=5)
+
+        f_cat = ctk.CTkFrame(f1, fg_color="transparent")
+        f_cat.pack(side="left", padx=10, pady=5)
         ctk.CTkLabel(f_cat, text="Categoría *", font=theme.FONTS["body_bold"]).pack(anchor="w")
         cats = database.obtener_categorias()
-        self.e_cat = ctk.CTkComboBox(f_cat, values=cats if cats else ["General"], width=150, height=35); self.e_cat.pack()
+        self.e_cat = ctk.CTkComboBox(f_cat, values=cats if cats else ["General"], width=150, height=35)
+        self.e_cat.pack()
 
         # --- 2. PRECIOS BASE ---
         seccion("2. Costos y Precio Base")
-        f2 = ctk.CTkFrame(scroll, fg_color="transparent"); f2.pack(fill="x", padx=10)
+        f2 = ctk.CTkFrame(scroll, fg_color="transparent")
+        f2.pack(fill="x", padx=10)
         self.e_cos = crear_campo(f2, "Costo Compra ($)", "0", 150)
         self.e_ven = crear_campo(f2, "Precio Venta Normal ($)", "0", 150)
 
         # --- 3. VENTAS ESPECIALES ---
         seccion("3. Modalidades de Venta Especial (Opcional)")
-        f3 = ctk.CTkFrame(scroll, fg_color="transparent"); f3.pack(fill="x", padx=10)
-        
+        f3 = ctk.CTkFrame(scroll, fg_color="transparent")
+        f3.pack(fill="x", padx=10)
+
         box_may = ctk.CTkFrame(f3, fg_color=theme.COLORS["bg_panel"], corner_radius=8)
         box_may.pack(side="left", padx=10, fill="y", ipadx=10, ipady=10)
-        ctk.CTkLabel(box_may, text="📦 Descuento por Mayoreo", font=theme.FONTS["body_bold"], text_color=theme.COLORS["warning"]).pack(anchor="w", padx=10)
-        row_m = ctk.CTkFrame(box_may, fg_color="transparent"); row_m.pack()
+        ctk.CTkLabel(box_may, text="📦 Descuento por Mayoreo", font=theme.FONTS["body_bold"],
+                     text_color=theme.COLORS["warning"]).pack(anchor="w", padx=10)
+        row_m = ctk.CTkFrame(box_may, fg_color="transparent")
+        row_m.pack()
         self.e_cant_may = crear_campo(row_m, "A partir de (Cant):", "0", 160)
         self.e_pre_may = crear_campo(row_m, "Precio Unit. ($):", "0", 160)
 
         box_frac = ctk.CTkFrame(f3, fg_color=theme.COLORS["bg_panel"], corner_radius=8)
         box_frac.pack(side="left", padx=10, fill="y", ipadx=10, ipady=10)
         self.chk_fraccion = ctk.CTkSwitch(box_frac, text="🧩 Vende por Fracción", font=theme.FONTS["body_bold"])
-        self.chk_fraccion.pack(anchor="w", padx=10, pady=(5,0))
-        row_f = ctk.CTkFrame(box_frac, fg_color="transparent"); row_f.pack()
+        self.chk_fraccion.pack(anchor="w", padx=10, pady=(5, 0))
+        row_f = ctk.CTkFrame(box_frac, fg_color="transparent")
+        row_f.pack()
         self.e_pre_frac = crear_campo(row_f, "Precio Fracción ($):", "0", 180)
+        self.e_div_frac = crear_campo(row_f, "Partes por Entero (Ej: 8):", "1", 180)
 
         # --- 4. INVENTARIO ---
         seccion("4. Inventario y Trazabilidad")
-        f4 = ctk.CTkFrame(scroll, fg_color="transparent"); f4.pack(fill="x", padx=10)
+        f4 = ctk.CTkFrame(scroll, fg_color="transparent")
+        f4.pack(fill="x", padx=10)
         self.e_stk = crear_campo(f4, "Stock Actual", "0", 120)
         self.e_min = crear_campo(f4, "Alarma Mínima", "5", 120)
         self.e_cad = crear_campo(f4, "Fecha Caducidad", "AAAA-MM-DD", 160)
 
-        self.lbl_msg = ctk.CTkLabel(scroll, text="", font=theme.FONTS["body_bold"]); self.lbl_msg.pack(pady=15)
-        
+        self.lbl_msg = ctk.CTkLabel(scroll, text="", font=theme.FONTS["body_bold"])
+        self.lbl_msg.pack(pady=15)
+
         # --- LÓGICA DE CARGA DE DATOS Y BOTÓN FINAL ---
         if editar_datos:
-            # Función de seguridad para evitar errores al leer la BD
-            def seguro(valor): 
+            def seguro(valor):
                 if valor is None or valor == "": return "0"
                 return f"{valor:g}" if isinstance(valor, (int, float)) else str(valor)
 
-            self.e_cod.insert(0, editar_datos[0]); self.e_cod.configure(state="disabled")
+            self.e_cod.insert(0, editar_datos[0])
+            self.e_cod.configure(state="disabled")
             self.e_nom.insert(0, editar_datos[1] or "")
             self.e_ven.insert(0, seguro(editar_datos[2]))
             self.e_stk.insert(0, seguro(editar_datos[3]))
             self.e_cos.insert(0, seguro(editar_datos[4]))
             self.e_cat.set(editar_datos[5] or "General")
-            
+
             if editar_datos[6] == 1: self.chk_fraccion.select()
-            
+
             self.e_pre_may.insert(0, seguro(editar_datos[7]))
             self.e_cant_may.insert(0, seguro(editar_datos[8]))
             self.e_pre_frac.insert(0, seguro(editar_datos[9]))
-            
+
             if editar_datos[10]: self.e_cad.insert(0, str(editar_datos[10]))
-            
-            # BOTÓN DE ACTUALIZAR
-            self.btn_accion = ctk.CTkButton(scroll, text="Actualizar Ficha Técnica", font=theme.FONTS["body_bold"], 
-                                           fg_color=theme.COLORS["warning"], hover_color=theme.COLORS["warning_hover"], 
-                                           height=45, command=self.guardar)
+
+            val_div = editar_datos[11] if len(editar_datos) > 11 else 1
+            self.e_div_frac.insert(0, seguro(val_div))
+
+            self.btn_accion = ctk.CTkButton(scroll, text="Actualizar Ficha Técnica", font=theme.FONTS["body_bold"],
+                                            fg_color=theme.COLORS["warning"], hover_color=theme.COLORS["warning_hover"],
+                                            height=45, command=self.guardar)
             self.btn_accion.pack(pady=25)
         else:
-            # Valores por defecto para productos nuevos
             self.e_cat.set("General")
             self.e_min.insert(0, "5")
-            self.e_pre_may.insert(0, ""); self.e_cant_may.insert(0, ""); self.e_pre_frac.insert(0, "")
-            self.e_cos.insert(0, ""); self.e_ven.insert(0, ""); self.e_stk.insert(0, "")
-            
-            # BOTÓN DE GUARDAR (El que te faltaba)
-            self.btn_accion = ctk.CTkButton(scroll, text="Guardar Nuevo Producto", font=theme.FONTS["body_bold"], 
-                                           fg_color=theme.COLORS["success"], hover_color=theme.COLORS["success_hover"], 
-                                           height=45, command=self.guardar)
+            self.e_pre_may.insert(0, "")
+            self.e_cant_may.insert(0, "")
+            self.e_pre_frac.insert(0, "")
+            self.e_cos.insert(0, "")
+            self.e_ven.insert(0, "")
+            self.e_stk.insert(0, "")
+            self.e_div_frac.insert(0, "1")
+
+            self.btn_accion = ctk.CTkButton(scroll, text="Guardar Nuevo Producto", font=theme.FONTS["body_bold"],
+                                            fg_color=theme.COLORS["success"], hover_color=theme.COLORS["success_hover"],
+                                            height=45, command=self.guardar)
             self.btn_accion.pack(pady=25)
-            
+
     def guardar(self):
-        # ... (Tu función guardar con validaciones se mantiene igual)
-        # Asegúrate de que los nombres de los campos coincidan con los de arriba (self.e_cod, etc.)
         c, n, cat = self.e_cod.get().strip(), self.e_nom.get().upper().strip(), self.e_cat.get().title().strip()
         f_cad = self.e_cad.get().strip()
         es_frac = 1 if self.chk_fraccion.get() == 1 else 0
 
-        if not c or not n or not cat: return self.lbl_msg.configure(text="Faltan datos obligatorios.", text_color=theme.COLORS["danger"])
+        if not c or not n or not cat: return self.lbl_msg.configure(text="Faltan datos obligatorios.",
+                                                                    text_color=theme.COLORS["danger"])
         try:
             cos = float(self.e_cos.get().replace(",", ".") or 0)
             ven = float(self.e_ven.get().replace(",", ".") or 0)
@@ -816,22 +866,30 @@ class FormularioProductoView(ViewBase):
             p_may = float(self.e_pre_may.get().replace(",", ".") or 0)
             c_may = float(self.e_cant_may.get().replace(",", ".") or 0)
             p_frac = float(self.e_pre_frac.get().replace(",", ".") or 0)
+            div_frac = float(self.e_div_frac.get().replace(",", ".") or 1)
 
-            if cos < 0 or ven < 0: return self.lbl_msg.configure(text="Precios no pueden ser negativos.", text_color=theme.COLORS["danger"])
+            if div_frac <= 0: div_frac = 1.0
 
-            if self.e_cod.cget("state") == "disabled": 
-                exito, msg = database.actualizar_producto(c, n, cat, cos, ven, stk, mnm, es_frac, p_may, c_may, p_frac, f_cad)
-            else: 
-                exito, msg = database.agregar_producto(c, n, cat, cos, ven, stk, mnm, es_frac, p_may, c_may, p_frac, f_cad)
-            
+            if cos < 0 or ven < 0: return self.lbl_msg.configure(text="Precios no pueden ser negativos.",
+                                                                 text_color=theme.COLORS["danger"])
+
+            if self.e_cod.cget("state") == "disabled":
+                exito, msg = database.actualizar_producto(c, n, cat, cos, ven, stk, mnm, es_frac, p_may, c_may, p_frac,
+                                                          f_cad, div_frac)
+            else:
+                exito, msg = database.agregar_producto(c, n, cat, cos, ven, stk, mnm, es_frac, p_may, c_may, p_frac,
+                                                       f_cad, div_frac)
+
             if exito:
                 self.lbl_msg.configure(text=msg, text_color=theme.COLORS["success"])
                 if self.e_cod.cget("state") != "disabled":
-                    # Limpiar campos después de guardar nuevo
-                    for e in [self.e_cod, self.e_nom, self.e_cos, self.e_ven, self.e_stk, self.e_pre_may, self.e_cant_may, self.e_pre_frac, self.e_cad]: e.delete(0, 'end')
+                    for e in [self.e_cod, self.e_nom, self.e_cos, self.e_ven, self.e_stk, self.e_pre_may,
+                              self.e_cant_may, self.e_pre_frac, self.e_div_frac, self.e_cad]: e.delete(0, 'end')
                 self.app.actualizar_campana_alertas()
-            else: self.lbl_msg.configure(text=msg, text_color=theme.COLORS["danger"])
-        except ValueError: self.lbl_msg.configure(text="Error numérico.", text_color=theme.COLORS["danger"])
+            else:
+                self.lbl_msg.configure(text=msg, text_color=theme.COLORS["danger"])
+        except ValueError:
+            self.lbl_msg.configure(text="Error numérico.", text_color=theme.COLORS["danger"])
 
 # ==========================================
 # 5. FINANZAS Y GASTOS 

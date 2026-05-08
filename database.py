@@ -41,6 +41,9 @@ def inicializar_bd():
             "ALTER TABLE productos ADD COLUMN cantidad_mayoreo REAL DEFAULT 0",
             "ALTER TABLE productos ADD COLUMN precio_fraccion REAL DEFAULT 0",
             "ALTER TABLE productos ADD COLUMN fecha_caducidad TEXT"
+            "ALTER TABLE productos ADD COLUMN precio_fraccion REAL DEFAULT 0",
+            "ALTER TABLE productos ADD COLUMN fecha_caducidad TEXT",
+            "ALTER TABLE productos ADD COLUMN divisor_fraccion REAL DEFAULT 1"
         ]
         for m in migraciones:
             try: cursor.execute(m)
@@ -124,14 +127,14 @@ def obtener_alertas_caducidad():
     except: pass
     return alertas
 
-def agregar_producto(cod, nom, cat, pre_c, pre_v, stk, stk_min, es_frac, p_may, c_may, p_frac, f_cad):
+def agregar_producto(cod, nom, cat, pre_c, pre_v, stk, stk_min, es_frac, p_may, c_may, p_frac, f_cad, div_frac):
     try:
         with sqlite3.connect(DB_NAME) as conexion:
             fecha = datetime.now().strftime("%Y-%m-%d %H:%M")
             conexion.execute('''INSERT INTO productos 
-                (codigo_barras, nombre, categoria, precio_compra, precio_venta, stock, fecha_modificacion, stock_minimo, es_fraccion, precio_mayoreo, cantidad_mayoreo, precio_fraccion, fecha_caducidad) 
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
-                (cod, nom, cat, pre_c, pre_v, stk, fecha, stk_min, es_frac, p_may, c_may, p_frac, f_cad))
+                (codigo_barras, nombre, categoria, precio_compra, precio_venta, stock, fecha_modificacion, stock_minimo, es_fraccion, precio_mayoreo, cantidad_mayoreo, precio_fraccion, fecha_caducidad, divisor_fraccion) 
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+                (cod, nom, cat, pre_c, pre_v, stk, fecha, stk_min, es_frac, p_may, c_may, p_frac, f_cad, div_frac))
             return True, "Producto guardado."
     except sqlite3.IntegrityError: return False, "Código duplicado."
 
@@ -139,15 +142,15 @@ def buscar_productos(codigo="", nombre=""):
     with sqlite3.connect(DB_NAME) as conexion:
         return conexion.execute('SELECT codigo_barras, nombre, categoria, precio_compra, precio_venta, stock, stock_minimo, fecha_caducidad, es_fraccion FROM productos WHERE codigo_barras LIKE ? AND nombre LIKE ?', (f'%{codigo}%', f'%{nombre}%')).fetchall()
 
-def actualizar_producto(cod, nom, cat, pre_c, pre_v, stk, stk_min, es_frac, p_may, c_may, p_frac, f_cad):
+def actualizar_producto(cod, nom, cat, pre_c, pre_v, stk, stk_min, es_frac, p_may, c_may, p_frac, f_cad, div_frac):
     try:
         with sqlite3.connect(DB_NAME) as conexion:
             fecha = datetime.now().strftime("%Y-%m-%d %H:%M")
             conexion.execute('''UPDATE productos SET 
                 nombre=?, categoria=?, precio_compra=?, precio_venta=?, stock=?, stock_minimo=?, fecha_modificacion=?, es_fraccion=?, 
-                precio_mayoreo=?, cantidad_mayoreo=?, precio_fraccion=?, fecha_caducidad=? 
+                precio_mayoreo=?, cantidad_mayoreo=?, precio_fraccion=?, fecha_caducidad=?, divisor_fraccion=? 
                 WHERE codigo_barras=?''',
-                (nom, cat, pre_c, pre_v, stk, stk_min, fecha, es_frac, p_may, c_may, p_frac, f_cad, cod))
+                (nom, cat, pre_c, pre_v, stk, stk_min, fecha, es_frac, p_may, c_may, p_frac, f_cad, div_frac, cod))
             return True, "Producto actualizado."
     except Exception as e: return False, str(e)
 
@@ -158,21 +161,53 @@ def eliminar_producto(codigo):
 # --- FACTURACIÓN Y FINANZAS ---
 def buscar_producto_exacto(codigo):
     with sqlite3.connect(DB_NAME) as conexion:
-        # Traemos todos los datos nuevos para el motor de precios
-        return conexion.execute("SELECT codigo_barras, nombre, precio_venta, stock, precio_compra, categoria, es_fraccion, precio_mayoreo, cantidad_mayoreo, precio_fraccion, fecha_caducidad FROM productos WHERE codigo_barras = ?", (codigo,)).fetchone()
+        # Añadimos divisor_fraccion al final del SELECT
+        return conexion.execute("SELECT codigo_barras, nombre, precio_venta, stock, precio_compra, categoria, es_fraccion, precio_mayoreo, cantidad_mayoreo, precio_fraccion, fecha_caducidad, divisor_fraccion FROM productos WHERE codigo_barras = ?", (codigo,)).fetchone()
+
 
 def registrar_venta(carrito, total, cajero, efectivo, cambio, metodo_pago):
-    conexion = sqlite3.connect(DB_NAME); cursor = conexion.cursor()
+    conexion = sqlite3.connect(DB_NAME)
+    cursor = conexion.cursor()
     try:
         fecha = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        cursor.execute("INSERT INTO ventas (fecha, cajero, total, efectivo, cambio, metodo_pago) VALUES (?, ?, ?, ?, ?, ?)", (fecha, cajero, total, efectivo, cambio, metodo_pago))
+        cursor.execute(
+            "INSERT INTO ventas (fecha, cajero, total, efectivo, cambio, metodo_pago) VALUES (?, ?, ?, ?, ?, ?)",
+            (fecha, cajero, total, efectivo, cambio, metodo_pago)
+        )
         venta_id = cursor.lastrowid
+
         for item in carrito:
-            cursor.execute('''INSERT INTO detalles_venta (venta_id, codigo_producto, nombre_producto, cantidad, precio_unitario, subtotal, costo_unitario, categoria) VALUES (?, ?, ?, ?, ?, ?, ?, ?)''', (venta_id, item['codigo'], item['nombre'], item['cantidad'], item['precio_usado'], item['subtotal'], item['costo'], item['categoria']))
-            cursor.execute("UPDATE productos SET stock = stock - ? WHERE codigo_barras = ?", (item['cantidad'], item['codigo']))
-        conexion.commit(); return True, venta_id
-    except Exception as e: conexion.rollback(); return False, str(e)
-    finally: conexion.close()
+            cursor.execute(
+                '''INSERT INTO detalles_venta (venta_id, codigo_producto, nombre_producto, cantidad, precio_unitario,
+                                               subtotal, costo_unitario, categoria)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)''',
+                (venta_id, item['codigo'], item['nombre'], item['cantidad'], item['precio_usado'], item['subtotal'],
+                 item['costo'], item['categoria'])
+            )
+
+            # Cálculo de la fracción para restar del inventario
+            if item.get('modo_fraccion', False):
+                divisor = item.get('divisor_fraccion', 1.0)
+                if divisor <= 0:
+                    divisor = 1.0
+                stock_a_restar = item['cantidad'] / divisor
+            else:
+                stock_a_restar = item['cantidad']
+
+            cursor.execute(
+                "UPDATE productos SET stock = stock - ? WHERE codigo_barras = ?",
+                (stock_a_restar, item['codigo'])
+            )
+
+        conexion.commit()
+        return True, venta_id
+
+    except Exception as e:
+        conexion.rollback()
+        return False, str(e)
+
+    finally:
+        conexion.close()
 
 def obtener_ventas_por_fecha(fecha):
     with sqlite3.connect(DB_NAME) as conexion: return conexion.execute("SELECT id, fecha, cajero, total, efectivo, cambio, metodo_pago FROM ventas WHERE fecha LIKE ?", (f"{fecha}%",)).fetchall()

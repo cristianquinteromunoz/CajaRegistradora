@@ -17,13 +17,13 @@ class KuroApp(ctk.CTk):
         self.rol_actual = None
         self.current_view = None
 
-        self.grid_columnconfigure(0, weight=1);
+        self.grid_columnconfigure(0, weight=1)
         self.grid_rowconfigure(0, weight=1)
         self.aplicar_estilos_globales()
         self.mostrar_login()
 
     def aplicar_estilos_globales(self):
-        style = ttk.Style();
+        style = ttk.Style()
         style.theme_use("default")
         style.configure("Treeview", background=theme.COLORS["table_odd"], foreground=theme.COLORS["text_main"],
                         rowheight=35, fieldbackground=theme.COLORS["bg_main"], borderwidth=0, font=theme.FONTS["table"])
@@ -38,14 +38,14 @@ class KuroApp(ctk.CTk):
 
     def mostrar_login(self):
         self.limpiar_todo()
-        self.grid_columnconfigure(0, weight=1);
+        self.grid_columnconfigure(0, weight=1)
         self.grid_columnconfigure(1, weight=0)
         self.current_view = views.LoginView(self, self)
 
     def procesar_login(self, user, password):
         exito, rol = database.verificar_login(user, password)
         if exito:
-            self.rol_actual = rol;
+            self.rol_actual = rol
             self.title(f"Kuro Systems - Usuario: {user.upper()} | Rol: {rol.upper()}")
             self.construir_interfaz_principal()
             return True
@@ -53,7 +53,7 @@ class KuroApp(ctk.CTk):
 
     def construir_interfaz_principal(self):
         self.limpiar_todo()
-        self.grid_columnconfigure(0, weight=0);
+        self.grid_columnconfigure(0, weight=0)
         self.grid_columnconfigure(1, weight=1)
 
         # --- BARRA LATERAL ---
@@ -156,7 +156,7 @@ class KuroApp(ctk.CTk):
                          text_color=theme.COLORS["success"]).pack(pady=50)
         else:
             for p in alertas_stk:
-                box = ctk.CTkFrame(scroll_stk, fg_color=theme.COLORS["table_danger"], corner_radius=5);
+                box = ctk.CTkFrame(scroll_stk, fg_color=theme.COLORS["table_danger"], corner_radius=5)
                 box.pack(pady=5, fill="x")
                 ctk.CTkLabel(box, text=f"[{p[0]}] {p[1]}\nStock Actual: {p[2]} (Mínimo: {p[3]})",
                              text_color=theme.COLORS["text_main"], justify="left").pack(padx=10, pady=10, anchor="w")
@@ -170,7 +170,7 @@ class KuroApp(ctk.CTk):
             for cod, nom, fecha, estado in alertas_cad:
                 color_box = theme.COLORS["danger"] if "VENCIDO" in estado or "HOY" in estado else theme.COLORS[
                     "warning"]
-                box = ctk.CTkFrame(scroll_cad, fg_color=color_box, corner_radius=5);
+                box = ctk.CTkFrame(scroll_cad, fg_color=color_box, corner_radius=5)
                 box.pack(pady=5, fill="x")
                 ctk.CTkLabel(box, text=f"[{cod}] {nom}\nFecha registrada: {fecha}  ➔  {estado}",
                              text_color=theme.COLORS["text_main"], justify="left").pack(padx=10, pady=10, anchor="w")
