@@ -403,8 +403,13 @@ class POSInstance(ctk.CTkFrame):
     def calc_cambio(self, e=None):
         if self.op_pago.get() != "Efectivo" or self.total_venta == 0: return
         val = self.ent_efectivo.get().replace(".", "").replace(",", "").replace("$", "").strip()
-        if not val: self.lbl_cambio.configure(text="Cambio: $ 0",
-                                              text_color=theme.COLORS["text_highlight"]); self.cambio_actual = 0; return
+
+        # --- CORRECCIÓN: Si está vacío, asume pago exacto automáticamente ---
+        if not val:
+            self.lbl_cambio.configure(text="Cambio: $ 0 (Exacto)", text_color=theme.COLORS["success"])
+            self.cambio_actual = 0.0
+            return
+
         try:
             self.cambio_actual = float(val) - self.total_venta
             if self.cambio_actual >= 0:
@@ -419,7 +424,13 @@ class POSInstance(ctk.CTkFrame):
         if not self.carrito: return
         mp = self.op_pago.get()
         ef_texto = self.ent_efectivo.get().replace(".", "").replace(",", "").replace("$", "").strip()
-        ef = float(ef_texto or 0.0)
+
+        # --- CORRECCIÓN: Si es Efectivo y el campo está vacío, asigna el valor total de la venta ---
+        if mp == "Efectivo" and not ef_texto:
+            ef = float(self.total_venta)
+            self.cambio_actual = 0.0
+        else:
+            ef = float(ef_texto or 0.0)
 
         if ef < self.total_venta: return messagebox.showerror("Error", "Pago insuficiente.")
 
